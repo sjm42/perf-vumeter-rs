@@ -1,13 +1,4 @@
-# pwr-server
-My web server for controlling CoAP-enabled power relay.
-Written in Rust, using
-  * Actix-web framework
-  * Askama template engine
-  * CoAP client library
+# bitrate-vu-meter
+A tiny program to control analog vu meter hooked up to serial port + usb-serial converter + attiny85
 
-### References
-
-  * https://actix.rs/
-  * https://crates.io/crates/actix-web
-  * https://github.com/djc/askama
-  * https://docs.rs/crate/coap/
+The firmware for attiny85 can be found at https://github.com/sjm42/avr/tree/master/tiny-vumeter
