@@ -1,0 +1,26 @@
+# Cargo.toml
+
+[package]
+name = "bitrate-vu-meter"
+version = "0.1.0"
+edition = "2018"
+resolver = "2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chrono = "*"
+env_logger = "*"
+log = "*"
+structopt = "*"
+serialport = "*"
+
+[build-dependencies]
+build-data = "*"
+
+[profile.release]
+lto = true
+opt-level = 3 #default
+# opt-level = 'z'  # Optimize for size.
+
+# EOF
