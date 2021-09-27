@@ -1,13 +1,11 @@
 // main.rs
 
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
 use log::*;
 use serialport::{DataBits, FlowControl, Parity, StopBits};
-use std::fs::File;
 use std::io::{self, BufRead};
-use std::path::Path;
-use std::time::{self, SystemTime};
-use std::{cmp, fmt, thread};
+use std::{cmp, fmt, thread, time};
+use std::{fs::File, path::Path};
 use structopt::StructOpt;
 
 #[derive(Debug, Default, StructOpt)]
@@ -60,32 +58,32 @@ pub struct Stats {
     pub iface: String,
     pub dir: Cnt,
     fn_stats: String,
-    prev_ts: SystemTime,
+    prev_ts: time::Instant,
     prev_cnt: i64,
 }
 impl Stats {
-    pub fn new<S: AsRef<str>>(iface: S, dir: Cnt) -> Result<Self> {
+    pub fn new<S: AsRef<str>>(iface: S, dir: Cnt) -> anyhow::Result<Self> {
         let fn_stats = format!("/sys/class/net/{}/statistics/{}", iface.as_ref(), dir);
         let prev_cnt = read_number(&fn_stats)?;
         Ok(Self {
             iface: iface.as_ref().to_string(),
             dir,
             fn_stats,
-            prev_ts: SystemTime::now(),
+            prev_ts: time::Instant::now(),
             prev_cnt,
         })
     }
-    pub fn bitrate(&mut self) -> Result<i64> {
-        let us = self.prev_ts.elapsed().unwrap().as_micros();
+    pub fn bitrate(&mut self) -> anyhow::Result<i64> {
+        let us = self.prev_ts.elapsed().as_micros();
         let cnt = read_number(&self.fn_stats)?;
         let rate = ((8 * (cnt - self.prev_cnt)) as f64 / (us as f64 / 1_000_000.0)) as i64;
-        self.prev_ts = SystemTime::now();
+        self.prev_ts = time::Instant::now();
         self.prev_cnt = cnt;
         Ok(rate)
     }
 }
 
-pub fn read_number<P>(filename: P) -> Result<i64>
+pub fn read_number<P>(filename: P) -> anyhow::Result<i64>
 where
     P: AsRef<Path>,
 {
@@ -110,7 +108,7 @@ pub fn start_pgm(c: &OptsCommon, desc: &str) {
     debug!("Compiler version: {}", env!("RUSTC_VERSION"));
 }
 
-fn main() -> Result<()> {
+fn main() -> anyhow::Result<()> {
     let opts = OptsCommon::from_args();
     start_pgm(&opts, "Bitrate VU meter");
 
@@ -130,7 +128,7 @@ fn main() -> Result<()> {
         // sleep 200ms
         thread::sleep(time::Duration::new(0, sleep_ns - elapsed_ns));
 
-        let now = SystemTime::now();
+        let now = time::Instant::now();
         let rx_rate = rx.bitrate()?;
         let tx_rate = tx.bitrate()?;
         let rate = cmp::max(rx_rate, tx_rate);
@@ -152,7 +150,7 @@ fn main() -> Result<()> {
             tx_rate / 1000,
             gauge
         );
-        elapsed_ns = now.elapsed()?.as_nanos() as u32;
+        elapsed_ns = now.elapsed().as_nanos() as u32;
     }
     // Ok(())
 }
