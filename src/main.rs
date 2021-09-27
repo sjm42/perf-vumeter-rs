@@ -2,7 +2,7 @@
 
 use anyhow::anyhow;
 use log::*;
-use serialport::{DataBits, FlowControl, Parity, StopBits};
+use serialport::{DataBits, FlowControl, Parity, SerialPort, StopBits};
 use std::io::{self, BufRead};
 use std::{cmp, fmt, thread, time};
 use std::{fs::File, path::Path};
@@ -83,7 +83,7 @@ impl Stats {
     }
 }
 
-pub fn read_number<P>(filename: P) -> anyhow::Result<i64>
+fn read_number<P>(filename: P) -> anyhow::Result<i64>
 where
     P: AsRef<Path>,
 {
@@ -96,7 +96,7 @@ where
     Err(anyhow!("empty"))
 }
 
-pub fn start_pgm(c: &OptsCommon, desc: &str) {
+fn start_pgm(c: &OptsCommon, desc: &str) {
     env_logger::Builder::new()
         .filter_level(c.get_loglevel())
         .format_timestamp_secs()
@@ -106,6 +106,25 @@ pub fn start_pgm(c: &OptsCommon, desc: &str) {
     debug!("Git commit: {}", env!("GIT_COMMIT"));
     debug!("Source timestamp: {}", env!("SOURCE_TIMESTAMP"));
     debug!("Compiler version: {}", env!("RUSTC_VERSION"));
+}
+
+fn set_vu(ser: &mut dyn SerialPort, buf: &mut [u8], v: u8) -> anyhow::Result<()> {
+    buf[3] = v;
+    ser.write_all(buf)?;
+    Ok(())
+}
+
+fn hello(ser: &mut dyn SerialPort, buf: &mut [u8]) -> anyhow::Result<()> {
+    for i in 0..=255u8 {
+        set_vu(ser, buf, i)?;
+        thread::sleep(time::Duration::new(0, 10_000_000));
+    }
+    for i in (0..=255u8).rev() {
+        set_vu(ser, buf, i)?;
+        thread::sleep(time::Duration::new(0, 10_000_000));
+    }
+
+    Ok(())
 }
 
 fn main() -> anyhow::Result<()> {
@@ -119,6 +138,8 @@ fn main() -> anyhow::Result<()> {
         .flow_control(FlowControl::None)
         .open()?;
     let mut cmd_buf: [u8; 4] = [0x00, 0xFF, 0x01, 0x00];
+    hello(&mut *ser, &mut cmd_buf)?;
+
     let mut rx = Stats::new(&opts.interface, Cnt::Rx)?;
     let mut tx = Stats::new(&opts.interface, Cnt::Tx)?;
     let mut elapsed_ns = 0;
@@ -141,9 +162,7 @@ fn main() -> anyhow::Result<()> {
             gauge = 0.0;
         }
 
-        let i = gauge as u8;
-        cmd_buf[3] = i;
-        ser.write_all(&cmd_buf)?;
+        set_vu(&mut *ser, &mut cmd_buf, gauge as u8)?;
         debug!(
             "rx: {} kbps, tx: {} kbps, gauge: {}",
             rx_rate / 1000,
