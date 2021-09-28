@@ -74,9 +74,9 @@ impl Stats {
         })
     }
     pub fn bitrate(&mut self) -> anyhow::Result<i64> {
-        let us = self.prev_ts.elapsed().as_micros();
+        let us = self.prev_ts.elapsed().as_millis();
         let cnt = read_number(&self.fn_stats)?;
-        let rate = ((8 * (cnt - self.prev_cnt)) as f64 / (us as f64 / 1_000_000.0)) as i64;
+        let rate = ((8 * (cnt - self.prev_cnt)) as f64 / (us as f64 / 1_000.0)) as i64;
         self.prev_ts = time::Instant::now();
         self.prev_cnt = cnt;
         Ok(rate)
