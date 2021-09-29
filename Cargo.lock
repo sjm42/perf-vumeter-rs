@@ -76,7 +76,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "build-data",
- "chrono",
  "env_logger",
  "log",
  "serialport",

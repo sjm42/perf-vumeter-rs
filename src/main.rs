@@ -83,6 +83,8 @@ impl Stats {
     }
 }
 
+type CmdBuf = [u8; 4];
+
 fn read_number<P>(filename: P) -> anyhow::Result<i64>
 where
     P: AsRef<Path>,
@@ -108,13 +110,12 @@ fn start_pgm(c: &OptsCommon, desc: &str) {
     debug!("Compiler version: {}", env!("RUSTC_VERSION"));
 }
 
-fn set_vu(ser: &mut dyn SerialPort, buf: &mut [u8], v: u8) -> anyhow::Result<()> {
+fn set_vu(ser: &mut dyn SerialPort, buf: &mut CmdBuf, v: u8) -> anyhow::Result<()> {
     buf[3] = v;
-    ser.write_all(buf)?;
-    Ok(())
+    Ok(ser.write_all(buf)?)
 }
 
-fn hello(ser: &mut dyn SerialPort, buf: &mut [u8]) -> anyhow::Result<()> {
+fn hello(ser: &mut dyn SerialPort, buf: &mut CmdBuf) -> anyhow::Result<()> {
     for i in 0..=255u8 {
         set_vu(ser, buf, i)?;
         thread::sleep(time::Duration::new(0, 10_000_000));
@@ -123,7 +124,6 @@ fn hello(ser: &mut dyn SerialPort, buf: &mut [u8]) -> anyhow::Result<()> {
         set_vu(ser, buf, i)?;
         thread::sleep(time::Duration::new(0, 10_000_000));
     }
-
     Ok(())
 }
 
@@ -137,7 +137,7 @@ fn main() -> anyhow::Result<()> {
         .stop_bits(StopBits::One)
         .flow_control(FlowControl::None)
         .open()?;
-    let mut cmd_buf: [u8; 4] = [0x00, 0xFF, 0x01, 0x00];
+    let mut cmd_buf: CmdBuf = [0x00, 0xFF, 0x01, 0x00];
     hello(&mut *ser, &mut cmd_buf)?;
 
     let mut rx = Stats::new(&opts.interface, Cnt::Rx)?;
@@ -171,7 +171,5 @@ fn main() -> anyhow::Result<()> {
         );
         elapsed_ns = now.elapsed().as_nanos() as u32;
     }
-    // Ok(())
 }
-
 // EOF

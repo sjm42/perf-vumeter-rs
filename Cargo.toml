@@ -10,7 +10,6 @@ resolver = "2"
 
 [dependencies]
 anyhow = "*"
-chrono = "*"
 env_logger = "*"
 log = "*"
 structopt = "*"
