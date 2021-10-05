@@ -1,5 +1,5 @@
-# bitrate-vu-meter
+# perf-vu-meter
 
-A tiny program to control analog vu meter hooked up to serial port + usb-serial converter + attiny85
+A tiny program to control analog VU meters hooked up to serial port + USB-serial converter + Arduino Nano
 
-The firmware for attiny85 can be found at <https://github.com/sjm42/avr/tree/master/tiny-vumeter>
+The firmware for Arduino Nano (atmega 328p) can be found at <https://github.com/sjm42/avr/tree/master/tiny-vumeter>

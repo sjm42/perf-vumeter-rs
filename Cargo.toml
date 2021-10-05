@@ -1,7 +1,7 @@
 # Cargo.toml
 
 [package]
-name = "bitrate-vu-meter"
+name = "perf-vu-meter"
 version = "0.1.0"
 edition = "2018"
 resolver = "2"
