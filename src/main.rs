@@ -244,7 +244,7 @@ fn hello(ser: &mut dyn SerialPort) -> anyhow::Result<()> {
 #[allow(unreachable_code)]
 fn main() -> anyhow::Result<()> {
     let opts = OptsCommon::from_args();
-    start_pgm(&opts, "Bitrate VU meter");
+    start_pgm(&opts, "Performance VU meter");
 
     let mut ser = serialport::new(&opts.port, 115200)
         .parity(Parity::None)
