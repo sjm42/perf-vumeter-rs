@@ -5,7 +5,7 @@ use log::*;
 use serialport::{DataBits, FlowControl, Parity, SerialPort, StopBits};
 use std::io::{self, BufRead};
 use std::{cmp, fmt, thread, time};
-use std::{fs::File, path::Path};
+use std::{collections::HashMap, fs::File, path::Path};
 use structopt::StructOpt;
 
 const CPU_JIFF: f64 = 100.0;
@@ -20,7 +20,7 @@ pub struct OptsCommon {
     pub port: String,
     #[structopt(short, long, default_value = "br0")]
     pub interface: String,
-    #[structopt(short, long, default_value = "4")]
+    #[structopt(short, long, default_value = "2")]
     pub samplerate: u16,
     #[structopt(short, long, default_value = "100")]
     pub max_mbps: u16,
@@ -66,7 +66,7 @@ pub struct IfStats {
 impl IfStats {
     pub fn new<S: AsRef<str>>(iface: S, dir: IfCounter) -> anyhow::Result<Self> {
         let fn_stats = format!("/sys/class/net/{}/statistics/{}", iface.as_ref(), dir);
-        let prev_cnt = read_number(&fn_stats)?;
+        let prev_cnt = Self::read_number(&fn_stats)?;
         Ok(Self {
             iface: iface.as_ref().to_string(),
             dir,
@@ -78,10 +78,22 @@ impl IfStats {
     pub fn bitrate(&mut self) -> anyhow::Result<i64> {
         let us = self.prev_ts.elapsed().as_micros();
         self.prev_ts = time::Instant::now();
-        let cnt = read_number(&self.fn_stats)?;
+        let cnt = Self::read_number(&self.fn_stats)?;
         let rate = ((8 * (cnt - self.prev_cnt)) as f64 / (us as f64 / 1_000_000.0)) as i64;
         self.prev_cnt = cnt;
         Ok(rate)
+    }
+    fn read_number<P>(filename: P) -> anyhow::Result<i64>
+    where
+        P: AsRef<Path>,
+    {
+        let file = File::open(filename)?;
+        let mut lines = io::BufReader::new(file).lines();
+        if let Some(line) = lines.next() {
+            let n = line?;
+            return Ok(n.parse::<i64>()?);
+        }
+        Err(anyhow!("empty"))
     }
 }
 
@@ -94,14 +106,14 @@ impl CpuStats {
     pub fn new() -> anyhow::Result<Self> {
         Ok(Self {
             prev_ts: time::Instant::now(),
-            prev_idle: read_cpuidle()?,
+            prev_idle: Self::read_cpuidle()?,
         })
     }
     pub fn cpurates(&mut self) -> anyhow::Result<Vec<f64>> {
         let us = self.prev_ts.elapsed().as_micros();
         self.prev_ts = time::Instant::now();
 
-        let idle = read_cpuidle()?;
+        let idle = Self::read_cpuidle()?;
         let factor = 100.0 * 1_000_000.0 / (us as f64 * CPU_JIFF);
         let n_cpu = (idle.len() - 1) as f64;
 
@@ -120,33 +132,74 @@ impl CpuStats {
     pub fn n_cpu(&self) -> usize {
         self.prev_idle.len() - 1
     }
-}
-
-fn read_cpuidle() -> anyhow::Result<Vec<i64>> {
-    let file = File::open("/proc/stat")?;
-    let mut cpu_idle = Vec::with_capacity(32);
-    for line in io::BufReader::new(file).lines() {
-        let line = line?;
-        let items = line.split_ascii_whitespace().collect::<Vec<&str>>();
-        if !items[0].starts_with("cpu") {
-            break;
+    fn read_cpuidle() -> anyhow::Result<Vec<i64>> {
+        let file = File::open("/proc/stat")?;
+        let mut cpu_idle = Vec::with_capacity(32);
+        for line in io::BufReader::new(file).lines() {
+            let line = line?;
+            let items = line.split_ascii_whitespace().collect::<Vec<&str>>();
+            if !items[0].starts_with("cpu") {
+                break;
+            }
+            cpu_idle.push(items[4].parse::<i64>()?);
         }
-        cpu_idle.push(items[4].parse::<i64>()?);
+        Ok(cpu_idle)
     }
-    Ok(cpu_idle)
 }
 
-fn read_number<P>(filename: P) -> anyhow::Result<i64>
-where
-    P: AsRef<Path>,
-{
-    let file = File::open(filename)?;
-    let mut lines = io::BufReader::new(file).lines();
-    if let Some(line) = lines.next() {
-        let n = line?;
-        return Ok(n.parse::<i64>()?);
+#[derive(Debug)]
+pub struct DiskStats {
+    prev_ts: time::Instant,
+    prev_stats: HashMap<String, (i64, i64)>,
+}
+impl DiskStats {
+    pub fn new() -> anyhow::Result<Self> {
+        Ok(Self {
+            prev_ts: time::Instant::now(),
+            prev_stats: Self::read_diskstats()?,
+        })
     }
-    Err(anyhow!("empty"))
+    pub fn diskrates(&mut self) -> anyhow::Result<Vec<f64>> {
+        let us = self.prev_ts.elapsed().as_micros();
+        self.prev_ts = time::Instant::now();
+
+        let stats = Self::read_diskstats()?;
+        let mut rates = Vec::with_capacity(stats.len());
+
+        for (k, v) in &stats {
+            if let None = self.prev_stats.get(k) {
+                // did not have this key last time!
+                continue;
+            }
+            let sect_rd = v.0 - self.prev_stats.get(k).unwrap().0;
+            let sect_wrt = v.1 - self.prev_stats.get(k).unwrap().1;
+            rates.push((sect_rd + sect_wrt) as f64 * 1_000_000.0 / us as f64);
+        }
+        // Rust refuses to just sort() f64, because NaN, Inf etc.
+        rates.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        self.prev_stats = stats;
+        Ok(rates)
+    }
+    // https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
+    fn read_diskstats() -> anyhow::Result<HashMap<String, (i64, i64)>> {
+        let file = File::open("/proc/diskstats")?;
+        let mut stats = HashMap::with_capacity(32);
+        for line in io::BufReader::new(file).lines() {
+            let line = line?;
+            let items = line.split_ascii_whitespace().collect::<Vec<&str>>();
+            let devname = items[2];
+            // collect sectors read and sectors written from "sd?" and "nvme???"
+            if devname.starts_with("sd") && devname.len() == 3
+                || devname.starts_with("nvme") && devname.len() == 7
+            {
+                let sect_rd = items[5].parse::<i64>()?;
+                let sect_wrt = items[9].parse::<i64>()?;
+                stats.insert(devname.into(), (sect_rd, sect_wrt));
+            }
+        }
+        debug!("{:?}", stats);
+        Ok(stats)
+    }
 }
 
 fn start_pgm(c: &OptsCommon, desc: &str) {
@@ -206,6 +259,8 @@ fn main() -> anyhow::Result<()> {
     let n_cpu = cpustats.n_cpu();
     let mut rx = IfStats::new(&opts.interface, IfCounter::Rx)?;
     let mut tx = IfStats::new(&opts.interface, IfCounter::Tx)?;
+    let mut diskstats = DiskStats::new()?;
+
     let mut elapsed_ns = 0;
     let sleep_ns: u32 = 1_000_000_000 / (opts.samplerate as u32);
 
@@ -213,6 +268,7 @@ fn main() -> anyhow::Result<()> {
         thread::sleep(time::Duration::new(0, sleep_ns - elapsed_ns));
         let now = time::Instant::now();
 
+        // CPU stats + gauge
         // Note: cpu_rates[0] is total/summary, the rest are sorted largest first
         let cpu_rates = cpustats.cpurates()?;
         let mut cpu_gauge;
@@ -230,7 +286,7 @@ fn main() -> anyhow::Result<()> {
         } else {
             cpu_gauge *= 2.56;
         }
-        info!(
+        debug!(
             "CPU gauge: {:.1} sum: {:.1} -- {}",
             cpu_gauge,
             cpu_rates[0],
@@ -243,18 +299,26 @@ fn main() -> anyhow::Result<()> {
         );
         set_vu(&mut *ser, 1, cpu_gauge)?;
 
+        // DISK stats + gauge
+        let disk_rates = diskstats.diskrates()?;
+        debug!("DISK rates: {:?}", disk_rates);
+        let disk_gauge = 256.0 * disk_rates[0] / 200_000.0;
+        debug!("DISK gauge: {:.1}", disk_gauge);
+        set_vu(&mut *ser, 2, disk_gauge)?;
+
+        // NET stats + gauge
         let rx_rate = rx.bitrate()?;
         let tx_rate = tx.bitrate()?;
         let rate = cmp::max(rx_rate, tx_rate);
-
         let net_gauge = 256.0 * (((rate as f64) / 1_000_000.0) / (opts.max_mbps as f64));
-        set_vu(&mut *ser, 3, net_gauge)?;
         debug!(
-            "rx: {} kbps, tx: {} kbps, gauge: {}",
+            "NET rx: {} kbps, tx: {} kbps, gauge: {}",
             rx_rate / 1000,
             tx_rate / 1000,
             net_gauge
         );
+        set_vu(&mut *ser, 3, net_gauge)?;
+
         elapsed_ns = now.elapsed().as_nanos() as u32;
     }
 }
