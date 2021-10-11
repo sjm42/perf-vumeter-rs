@@ -262,7 +262,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "perf-vu-meter"
+name = "perf-vumeter"
 version = "0.1.0"
 dependencies = [
  "anyhow",

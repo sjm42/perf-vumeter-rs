@@ -1,7 +1,7 @@
 # Cargo.toml
 
 [package]
-name = "perf-vu-meter"
+name = "perf-vumeter"
 version = "0.1.0"
 edition = "2018"
 resolver = "2"
