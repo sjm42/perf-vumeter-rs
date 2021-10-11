@@ -111,7 +111,7 @@ fn hello(ser: &mut dyn SerialPort) -> anyhow::Result<()> {
         for c in 1..=3u8 {
             set_vu(ser, c, i as f64)?;
         }
-        thread::sleep(time::Duration::new(0, 2_000_000));
+        thread::sleep(time::Duration::new(0, 3_000_000));
     }
     Ok(())
 }
