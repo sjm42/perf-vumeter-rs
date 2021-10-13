@@ -1,4 +1,4 @@
-// main.rs
+// bin/perf-vumeter.rs
 
 use log::*;
 use serialport::{DataBits, FlowControl, Parity, SerialPort, StopBits};
