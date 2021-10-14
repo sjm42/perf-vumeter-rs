@@ -1,41 +1,12 @@
-// main.rs
+// stats.rs
 
 use anyhow::anyhow;
 use log::*;
-use serialport::{DataBits, FlowControl, Parity, SerialPort, StopBits};
 use std::io::{self, BufRead};
-use std::{cmp, fmt, thread, time};
 use std::{collections::HashMap, fs::File, path::Path};
-use structopt::StructOpt;
+use std::{fmt, time};
 
 const CPU_JIFF: f64 = 100.0;
-
-#[derive(Debug, Default, StructOpt)]
-pub struct OptsCommon {
-    #[structopt(short, long)]
-    pub debug: bool,
-    #[structopt(short, long)]
-    pub trace: bool,
-    #[structopt(short, long, default_value = "/dev/ttyUSB0")]
-    pub port: String,
-    #[structopt(short, long, default_value = "br0")]
-    pub interface: String,
-    #[structopt(short, long, default_value = "2")]
-    pub samplerate: u16,
-    #[structopt(short, long, default_value = "100")]
-    pub max_mbps: u16,
-}
-impl OptsCommon {
-    fn get_loglevel(&self) -> LevelFilter {
-        if self.trace {
-            LevelFilter::Trace
-        } else if self.debug {
-            LevelFilter::Debug
-        } else {
-            LevelFilter::Info
-        }
-    }
-}
 
 #[derive(Debug)]
 pub enum IfCounter {
@@ -167,7 +138,7 @@ impl DiskStats {
         let mut rates = Vec::with_capacity(stats.len());
 
         for (k, v) in &stats {
-            if let None = self.prev_stats.get(k) {
+            if self.prev_stats.get(k).is_none() {
                 // did not have this key last time!
                 continue;
             }
@@ -199,127 +170,6 @@ impl DiskStats {
         }
         debug!("{:?}", stats);
         Ok(stats)
-    }
-}
-
-fn start_pgm(c: &OptsCommon, desc: &str) {
-    env_logger::Builder::new()
-        .filter_level(c.get_loglevel())
-        .format_timestamp_secs()
-        .init();
-    info!("Starting up {}...", desc);
-    debug!("Git branch: {}", env!("GIT_BRANCH"));
-    debug!("Git commit: {}", env!("GIT_COMMIT"));
-    debug!("Source timestamp: {}", env!("SOURCE_TIMESTAMP"));
-    debug!("Compiler version: {}", env!("RUSTC_VERSION"));
-}
-
-// only use values between 0.0 ... 255.0
-fn set_vu(ser: &mut dyn SerialPort, channel: u8, mut gauge: f64) -> anyhow::Result<()> {
-    if gauge > 255.0 {
-        gauge = 255.0;
-    }
-    if gauge < 0.0 {
-        gauge = 0.0;
-    }
-    let value = gauge as u8;
-    let cmd_buf: [u8; 4] = [0x00, 0xFF, channel, value];
-    Ok(ser.write_all(&cmd_buf)?)
-}
-
-fn hello(ser: &mut dyn SerialPort) -> anyhow::Result<()> {
-    for i in (0..=255u8)
-        .chain((128..=255).rev())
-        .chain(128..=255)
-        .chain((0..=255).rev())
-    {
-        for c in 1..=3u8 {
-            set_vu(ser, c, i as f64)?;
-        }
-        thread::sleep(time::Duration::new(0, 5_000_000));
-    }
-    Ok(())
-}
-
-#[allow(unreachable_code)]
-fn main() -> anyhow::Result<()> {
-    let opts = OptsCommon::from_args();
-    start_pgm(&opts, "Performance VU meter");
-
-    let mut ser = serialport::new(&opts.port, 115200)
-        .parity(Parity::None)
-        .data_bits(DataBits::Eight)
-        .stop_bits(StopBits::One)
-        .flow_control(FlowControl::None)
-        .open()?;
-
-    hello(&mut *ser)?;
-
-    let mut cpustats = CpuStats::new()?;
-    let n_cpu = cpustats.n_cpu();
-    let mut rx = IfStats::new(&opts.interface, IfCounter::Rx)?;
-    let mut tx = IfStats::new(&opts.interface, IfCounter::Tx)?;
-    let mut diskstats = DiskStats::new()?;
-
-    let mut elapsed_ns = 0;
-    let sleep_ns: u32 = 1_000_000_000 / (opts.samplerate as u32);
-
-    loop {
-        thread::sleep(time::Duration::new(0, sleep_ns - elapsed_ns));
-        let now = time::Instant::now();
-
-        // CPU stats + gauge
-        // Note: cpu_rates[0] is total/summary, the rest are sorted largest first
-        let cpu_rates = cpustats.cpurates()?;
-        let mut cpu_gauge;
-        if n_cpu >= 2 {
-            cpu_gauge = (cpu_rates[1] + cpu_rates[2]) / 2.0;
-        } else {
-            cpu_gauge = cpu_rates[1];
-        }
-
-        if n_cpu >= 6 {
-            cpu_gauge += (cpu_rates[3] + cpu_rates[4]) / 2.0;
-            cpu_gauge += (cpu_rates[5] + cpu_rates[6]) / 3.0;
-        } else if n_cpu >= 4 {
-            cpu_gauge += (cpu_rates[3] + cpu_rates[4]) * 0.80;
-        } else {
-            cpu_gauge *= 2.56;
-        }
-        debug!(
-            "CPU gauge: {:.1} sum: {:.1} -- {}",
-            cpu_gauge,
-            cpu_rates[0],
-            cpu_rates[1..]
-                .iter()
-                .map(|a| format!("{:.1}", a))
-                .collect::<Vec<String>>()
-                .join(" ")
-                .as_str()
-        );
-        set_vu(&mut *ser, 1, cpu_gauge)?;
-
-        // DISK stats + gauge
-        let disk_rates = diskstats.diskrates()?;
-        debug!("DISK rates: {:?}", disk_rates);
-        let disk_gauge = 256.0 * disk_rates[0] / 200_000.0;
-        debug!("DISK gauge: {:.1}", disk_gauge);
-        set_vu(&mut *ser, 2, disk_gauge)?;
-
-        // NET stats + gauge
-        let rx_rate = rx.bitrate()?;
-        let tx_rate = tx.bitrate()?;
-        let rate = cmp::max(rx_rate, tx_rate);
-        let net_gauge = 256.0 * (((rate as f64) / 1_000_000.0) / (opts.max_mbps as f64));
-        debug!(
-            "NET rx: {} kbps, tx: {} kbps, gauge: {}",
-            rx_rate / 1000,
-            tx_rate / 1000,
-            net_gauge
-        );
-        set_vu(&mut *ser, 3, net_gauge)?;
-
-        elapsed_ns = now.elapsed().as_nanos() as u32;
     }
 }
 // EOF
