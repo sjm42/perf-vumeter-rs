@@ -9,13 +9,11 @@ pub struct OptsCommon {
     pub debug: bool,
     #[structopt(short, long)]
     pub trace: bool,
-    #[structopt(short, long, default_value = "/dev/ttyUSB0")]
+    #[structopt(short, long, default_value = "/dev/VUmeter")]
     pub port: String,
-    #[structopt(short, long, default_value = "115200")]
-    pub baud: u32,
     #[structopt(short, long, default_value = "br0")]
     pub interface: String,
-    #[structopt(short, long, default_value = "2")]
+    #[structopt(short, long, default_value = "5")]
     pub samplerate: u16,
     #[structopt(short, long, default_value = "100")]
     pub max_mbps: u16,

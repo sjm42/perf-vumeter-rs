@@ -1,25 +1,22 @@
 // bin/perf-vumeter.rs
 
 use log::*;
-use serialport::{DataBits, FlowControl, Parity, SerialPort, StopBits};
+use std::fs::{File, OpenOptions};
+use std::io::Write;
 use std::{cmp, thread, time};
 use structopt::StructOpt;
 
 use perf_vumeter::*;
 
-#[allow(unreachable_code)]
 fn main() -> anyhow::Result<()> {
     let opts = OptsCommon::from_args();
     start_pgm(&opts, "Performance VU meter");
 
-    let mut ser = serialport::new(&opts.port, opts.baud)
-        .parity(Parity::None)
-        .data_bits(DataBits::Eight)
-        .stop_bits(StopBits::One)
-        .flow_control(FlowControl::None)
-        .open()?;
+    info!("Opening serial port {}", &opts.port);
+    let mut ser = OpenOptions::new().read(true).write(true).open(&opts.port)?;
 
-    hello(&mut *ser)?;
+    info!("Vu sez hi (:");
+    hello(&mut ser)?;
 
     let mut cpustats = CpuStats::new()?;
     let n_cpu = cpustats.n_cpu();
@@ -30,6 +27,7 @@ fn main() -> anyhow::Result<()> {
     let mut elapsed_ns = 0;
     let sleep_ns: u32 = 1_000_000_000 / (opts.samplerate as u32);
 
+    info!("Starting measure loop");
     loop {
         thread::sleep(time::Duration::new(0, sleep_ns - elapsed_ns));
         let now = time::Instant::now();
@@ -63,14 +61,14 @@ fn main() -> anyhow::Result<()> {
                 .join(" ")
                 .as_str()
         );
-        set_vu(&mut *ser, 1, cpu_gauge)?;
+        set_vu(&mut ser, 1, cpu_gauge)?;
 
         // DISK stats + gauge
         let disk_rates = diskstats.diskrates()?;
         debug!("DISK rates: {:?}", disk_rates);
         let disk_gauge = 256.0 * disk_rates[0] / 200_000.0;
         debug!("DISK gauge: {:.1}", disk_gauge);
-        set_vu(&mut *ser, 2, disk_gauge)?;
+        set_vu(&mut ser, 2, disk_gauge)?;
 
         // NET stats + gauge
         let rx_rate = rx.bitrate()?;
@@ -83,14 +81,14 @@ fn main() -> anyhow::Result<()> {
             tx_rate / 1000,
             net_gauge
         );
-        set_vu(&mut *ser, 3, net_gauge)?;
+        set_vu(&mut ser, 3, net_gauge)?;
 
         elapsed_ns = now.elapsed().as_nanos() as u32;
     }
 }
 
 // only use values between 0.0 ... 255.0
-fn set_vu(ser: &mut dyn SerialPort, channel: u8, mut gauge: f64) -> anyhow::Result<()> {
+fn set_vu(ser: &mut File, channel: u8, mut gauge: f64) -> anyhow::Result<()> {
     if gauge > 255.0 {
         gauge = 255.0;
     }
@@ -98,11 +96,12 @@ fn set_vu(ser: &mut dyn SerialPort, channel: u8, mut gauge: f64) -> anyhow::Resu
         gauge = 0.0;
     }
     let value = gauge as u8;
-    let cmd_buf: [u8; 4] = [0x00, 0xFF, channel, value];
+    let cmd_buf: [u8; 4] = [0xFD, 0x02, 0x30 + channel, value];
+
     Ok(ser.write_all(&cmd_buf)?)
 }
 
-fn hello(ser: &mut dyn SerialPort) -> anyhow::Result<()> {
+fn hello(ser: &mut File) -> anyhow::Result<()> {
     for i in (0..=255u8)
         .chain((128..=255).rev())
         .chain(128..=255)
@@ -115,5 +114,4 @@ fn hello(ser: &mut dyn SerialPort) -> anyhow::Result<()> {
     }
     Ok(())
 }
-
 // EOF
