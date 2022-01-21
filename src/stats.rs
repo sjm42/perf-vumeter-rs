@@ -1,7 +1,6 @@
 // stats.rs
 
 use anyhow::anyhow;
-use log::*;
 use std::io::{self, BufRead};
 use std::{collections::HashMap, fs::File, path::Path};
 use std::{fmt, time};
@@ -36,7 +35,7 @@ pub struct IfStats {
 }
 impl IfStats {
     pub fn new<S: AsRef<str>>(iface: S, dir: IfCounter) -> anyhow::Result<Self> {
-        let fn_stats = format!("/sys/class/net/{}/statistics/{}", iface.as_ref(), dir);
+        let fn_stats = format!("/sys/class/net/{if}/statistics/{dir}", if=iface.as_ref());
         let prev_cnt = Self::read_number(&fn_stats)?;
         Ok(Self {
             iface: iface.as_ref().to_string(),
@@ -107,6 +106,12 @@ impl CpuStats {
         let file = File::open("/proc/stat")?;
         let mut cpu_idle = Vec::with_capacity(32);
         for line in io::BufReader::new(file).lines() {
+            // https://www.linuxhowtos.org/System/procstat.htm
+            // Example input:
+            // cpu  4946134 4590 2478602 133301687 339228 0 324974 0 0 0
+            // cpu0 395460 280 162807 11177794 29191 0 196711 0 0 0
+            // cpu1 396373 662 172640 11169911 29418 0 45639 0 0 0
+            // intr 976024260 34 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0...
             let line = line?;
             let items = line.split_ascii_whitespace().collect::<Vec<&str>>();
             if !items[0].starts_with("cpu") {
@@ -168,7 +173,6 @@ impl DiskStats {
                 stats.insert(devname.into(), (sect_rd, sect_wrt));
             }
         }
-        debug!("{:?}", stats);
         Ok(stats)
     }
 }

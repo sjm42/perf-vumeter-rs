@@ -30,7 +30,7 @@ fn main() -> anyhow::Result<()> {
     info!("Starting measure loop");
     loop {
         thread::sleep(time::Duration::new(0, sleep_ns - elapsed_ns));
-        let now = time::Instant::now();
+        let start = time::Instant::now();
 
         // CPU stats + gauge
         // Note: cpu_rates[0] is total/summary, the rest are sorted largest first
@@ -51,12 +51,11 @@ fn main() -> anyhow::Result<()> {
             cpu_gauge *= 2.56;
         }
         debug!(
-            "CPU gauge: {:.1} sum: {:.1} -- {}",
-            cpu_gauge,
-            cpu_rates[0],
-            cpu_rates[1..]
+            "CPU gauge: {cpu_gauge:.1} sum: {sum:.1} -- {list}",
+            sum = cpu_rates[0],
+            list = cpu_rates[1..]
                 .iter()
-                .map(|a| format!("{:.1}", a))
+                .map(|a| format!("{a:.1}"))
                 .collect::<Vec<String>>()
                 .join(" ")
                 .as_str()
@@ -65,9 +64,9 @@ fn main() -> anyhow::Result<()> {
 
         // DISK stats + gauge
         let disk_rates = diskstats.diskrates()?;
-        debug!("DISK rates: {:?}", disk_rates);
+        debug!("DISK rates: {disk_rates:?}");
         let disk_gauge = 256.0 * disk_rates[0] / 200_000.0;
-        debug!("DISK gauge: {:.1}", disk_gauge);
+        debug!("DISK gauge: {disk_gauge:.1}");
         set_vu(&mut ser, 2, disk_gauge)?;
 
         // NET stats + gauge
@@ -76,14 +75,14 @@ fn main() -> anyhow::Result<()> {
         let rate = cmp::max(rx_rate, tx_rate);
         let net_gauge = 256.0 * (((rate as f64) / 1_000_000.0) / (opts.max_mbps as f64));
         debug!(
-            "NET rx: {} kbps, tx: {} kbps, gauge: {}",
-            rx_rate / 1000,
-            tx_rate / 1000,
-            net_gauge
+            "NET rx: {rx} kbps, tx: {tx} kbps, gauge: {net_gauge}",
+            rx = rx_rate / 1000,
+            tx = tx_rate / 1000
         );
         set_vu(&mut ser, 3, net_gauge)?;
 
-        elapsed_ns = now.elapsed().as_nanos() as u32;
+        // keep the sample rate from drifting
+        elapsed_ns = start.elapsed().as_nanos() as u32;
     }
 }
 
