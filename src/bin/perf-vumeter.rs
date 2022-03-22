@@ -97,7 +97,7 @@ fn set_vu(ser: &mut File, channel: u8, mut gauge: f64) -> anyhow::Result<()> {
         gauge = 0.0;
     }
 
-    // do some magic smoothing
+    // do some magic smoothing -- only move the gauge MAX_DELTA at once
     let delta = unsafe { (LAST_VAL[ch_i] as f64 - gauge).abs() };
     let delta_pos = unsafe { (gauge - LAST_VAL[ch_i] as f64).is_sign_positive() };
     let delta_trunc = delta.min(MAX_DELTA) as u8;
