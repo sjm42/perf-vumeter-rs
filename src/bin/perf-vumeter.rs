@@ -8,6 +8,8 @@ use structopt::StructOpt;
 
 use perf_vumeter::*;
 
+const MAX_DELTA: f64 = 96.0;
+
 fn main() -> anyhow::Result<()> {
     let opts = OptsCommon::from_args();
     start_pgm(&opts, "Performance VU meter");
@@ -35,12 +37,11 @@ fn main() -> anyhow::Result<()> {
         // CPU stats + gauge
         // Note: cpu_rates[0] is total/summary, the rest are sorted largest first
         let cpu_rates = cpustats.cpurates()?;
-        let mut cpu_gauge;
-        if n_cpu >= 2 {
-            cpu_gauge = (cpu_rates[1] + cpu_rates[2]) / 2.0;
+        let mut cpu_gauge = if n_cpu >= 2 {
+            (cpu_rates[1] + cpu_rates[2]) / 2.0
         } else {
-            cpu_gauge = cpu_rates[1];
-        }
+            cpu_rates[1]
+        };
 
         if n_cpu >= 6 {
             cpu_gauge += (cpu_rates[3] + cpu_rates[4]) / 2.0;
@@ -66,7 +67,6 @@ fn main() -> anyhow::Result<()> {
         let disk_rates = diskstats.diskrates()?;
         debug!("DISK rates: {disk_rates:?}");
         let disk_gauge = 256.0 * disk_rates[0] / 200_000.0;
-        debug!("DISK gauge: {disk_gauge:.1}");
         set_vu(&mut ser, 2, disk_gauge)?;
 
         // NET stats + gauge
@@ -86,15 +86,32 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-// only use values between 0.0 ... 255.0
+// only allow values between 0.0 ... 255.0
 fn set_vu(ser: &mut File, channel: u8, mut gauge: f64) -> anyhow::Result<()> {
+    static mut LAST_VAL: [u8; 256] = [0; 256];
+    let ch_i = channel as usize;
     if gauge > 255.0 {
         gauge = 255.0;
     }
     if gauge < 0.0 {
         gauge = 0.0;
     }
-    let value = gauge as u8;
+
+    // do some magic smoothing
+    let delta = unsafe { (LAST_VAL[ch_i] as f64 - gauge).abs() };
+    let delta_pos = unsafe { (gauge - LAST_VAL[ch_i] as f64).is_sign_positive() };
+    let delta_trunc = delta.min(MAX_DELTA) as u8;
+    let value = unsafe {
+        if delta_pos {
+            LAST_VAL[ch_i] + delta_trunc
+        } else {
+            LAST_VAL[ch_i] - delta_trunc
+        }
+    };
+    unsafe {
+        LAST_VAL[ch_i] = value;
+    }
+
     let cmd_buf: [u8; 4] = [0xFD, 0x02, 0x30 + channel, value];
 
     Ok(ser.write_all(&cmd_buf)?)
