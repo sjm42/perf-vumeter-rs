@@ -57,11 +57,9 @@ impl IfStats {
     where
         P: AsRef<Path>,
     {
-        let file = File::open(filename)?;
-        let mut lines = io::BufReader::new(file).lines();
+        let mut lines = io::BufReader::new(File::open(filename)?).lines();
         if let Some(line) = lines.next() {
-            let n = line?;
-            return Ok(n.parse::<i64>()?);
+            return Ok(line?.parse::<i64>()?);
         }
         Err(anyhow!("empty"))
     }
@@ -102,16 +100,18 @@ impl CpuStats {
     pub fn n_cpu(&self) -> usize {
         self.prev_idle.len() - 1
     }
+
+    // Documentation of /proc/stat
+    // https://www.linuxhowtos.org/System/procstat.htm
+    // Example input:
+    // cpu  4946134 4590 2478602 133301687 339228 0 324974 0 0 0
+    // cpu0 395460 280 162807 11177794 29191 0 196711 0 0 0
+    // cpu1 396373 662 172640 11169911 29418 0 45639 0 0 0
+    // intr 976024260 34 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0...
+
     fn read_cpuidle() -> anyhow::Result<Vec<i64>> {
-        let file = File::open("/proc/stat")?;
         let mut cpu_idle = Vec::with_capacity(32);
-        for line in io::BufReader::new(file).lines() {
-            // https://www.linuxhowtos.org/System/procstat.htm
-            // Example input:
-            // cpu  4946134 4590 2478602 133301687 339228 0 324974 0 0 0
-            // cpu0 395460 280 162807 11177794 29191 0 196711 0 0 0
-            // cpu1 396373 662 172640 11169911 29418 0 45639 0 0 0
-            // intr 976024260 34 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0...
+        for line in io::BufReader::new(File::open("/proc/stat")?).lines() {
             let line = line?;
             let items = line.split_ascii_whitespace().collect::<Vec<&str>>();
             if !items[0].starts_with("cpu") {
@@ -158,9 +158,8 @@ impl DiskStats {
     }
     // https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
     fn read_diskstats() -> anyhow::Result<HashMap<String, (i64, i64)>> {
-        let file = File::open("/proc/diskstats")?;
         let mut stats = HashMap::with_capacity(32);
-        for line in io::BufReader::new(file).lines() {
+        for line in io::BufReader::new(File::open("/proc/diskstats")?).lines() {
             let line = line?;
             let items = line.split_ascii_whitespace().collect::<Vec<&str>>();
             let devname = items[2];

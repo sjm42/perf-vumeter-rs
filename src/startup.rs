@@ -6,9 +6,12 @@ use structopt::StructOpt;
 #[derive(Debug, Default, StructOpt)]
 pub struct OptsCommon {
     #[structopt(short, long)]
+    pub verbose: bool,
+    #[structopt(short, long)]
     pub debug: bool,
     #[structopt(short, long)]
     pub trace: bool,
+
     #[structopt(short, long, default_value = "/dev/VUmeter")]
     pub port: String,
     #[structopt(short, long, default_value = "br0")]
@@ -24,8 +27,10 @@ impl OptsCommon {
             LevelFilter::Trace
         } else if self.debug {
             LevelFilter::Debug
-        } else {
+        } else if self.verbose {
             LevelFilter::Info
+        } else {
+            LevelFilter::Error
         }
     }
 }
