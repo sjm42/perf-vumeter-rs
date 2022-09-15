@@ -13,7 +13,7 @@ const MAX_DELTA: i16 = 96;
 
 fn main() -> anyhow::Result<()> {
     let opts = OptsCommon::from_args();
-    start_pgm(&opts, "Performance VU meter");
+    opts.start_pgm(env!("CARGO_BIN_NAME"));
 
     info!("Opening serial port {}", &opts.port);
     let mut ser = OpenOptions::new().read(true).write(true).open(&opts.port)?;

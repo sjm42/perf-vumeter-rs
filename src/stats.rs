@@ -2,8 +2,8 @@
 
 use anyhow::anyhow;
 use std::io::{self, BufRead};
+use std::{cmp::Ordering, fmt, time};
 use std::{collections::HashMap, fs::File, path::Path};
-use std::{fmt, time};
 
 const CPU_JIFF: f64 = 100.0;
 
@@ -93,7 +93,7 @@ impl CpuStats {
             rates.push(rate);
         }
         // Rust refuses to just sort() f64, because NaN etc.
-        rates[1..].sort_by(|a, b| b.partial_cmp(a).unwrap());
+        rates[1..].sort_by(|a, b| b.partial_cmp(a).unwrap_or(Ordering::Equal));
         self.prev_idle = idle;
         Ok(rates)
     }
@@ -143,16 +143,17 @@ impl DiskStats {
         let mut rates = Vec::with_capacity(stats.len());
 
         for (k, v) in &stats {
-            if self.prev_stats.get(k).is_none() {
-                // did not have this key last time!
-                continue;
+            match self.prev_stats.get(k) {
+                None => continue,
+                Some(prev) => {
+                    let sect_rd = v.0 - prev.0;
+                    let sect_wrt = v.1 - prev.1;
+                    rates.push((sect_rd + sect_wrt) as f64 * 1_000_000.0 / us as f64);
+                }
             }
-            let sect_rd = v.0 - self.prev_stats.get(k).unwrap().0;
-            let sect_wrt = v.1 - self.prev_stats.get(k).unwrap().1;
-            rates.push((sect_rd + sect_wrt) as f64 * 1_000_000.0 / us as f64);
         }
         // Rust refuses to just sort() f64, because NaN, Inf etc.
-        rates.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        rates.sort_by(|a, b| b.partial_cmp(a).unwrap_or(Ordering::Equal));
         self.prev_stats = stats;
         Ok(rates)
     }
