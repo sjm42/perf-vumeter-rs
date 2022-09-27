@@ -4,12 +4,19 @@ use anyhow::bail;
 use log::*;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::{cmp, thread, time};
+use std::{thread, time};
 use structopt::StructOpt;
 
 use perf_vumeter::*;
 
 const MAX_DELTA: i16 = 96;
+const NET_ZERO: f64 = 105.0;
+
+const NET_RMINUS: f64 = -NET_ZERO + 28.0;
+const NET_FMINUS: f64 = 0.83;
+
+const NET_RPLUS: f64 = 255.0 - NET_ZERO;
+const NET_FPLUS: f64 = 0.43;
 
 fn main() -> anyhow::Result<()> {
     let opts = OptsCommon::from_args();
@@ -73,8 +80,19 @@ fn main() -> anyhow::Result<()> {
         // NET stats + gauge
         let rx_rate = rx.bitrate()?;
         let tx_rate = tx.bitrate()?;
-        let rate = cmp::max(rx_rate, tx_rate);
-        let net_gauge = 256.0 * (((rate as f64) / 1_000_000.0) / (opts.max_mbps as f64));
+
+        // special olympics for -120...240 MW meter
+        let range;
+        let rate;
+        if rx_rate > tx_rate {
+            range = NET_RPLUS * NET_FPLUS;
+            rate = rx_rate;
+        } else {
+            range = NET_RMINUS * NET_FMINUS;
+            rate = tx_rate;
+        }
+        let net_gauge = NET_ZERO + range * (((rate as f64) / 1_000_000.0) / (opts.max_mbps as f64));
+
         debug!(
             "NET gauge: {net_gauge:.1} rx: {rx} kbps, tx: {tx} kbps",
             rx = rx_rate / 1000,
