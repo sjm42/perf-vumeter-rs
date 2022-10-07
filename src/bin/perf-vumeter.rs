@@ -10,7 +10,7 @@ use structopt::StructOpt;
 use perf_vumeter::*;
 
 const MAX_DELTA: i16 = 96;
-const NET_ZERO: f64 = 105.0;
+const NET_ZERO: f64 = 108.0;
 
 const NET_RMINUS: f64 = -NET_ZERO + 28.0;
 const NET_FMINUS: f64 = 0.83;
@@ -80,23 +80,21 @@ fn main() -> anyhow::Result<()> {
         // NET stats + gauge
         let rx_rate = rx.bitrate()?;
         let tx_rate = tx.bitrate()?;
+        let rate = rx_rate - tx_rate;
 
         // special olympics for -120...240 MW meter
-        let range;
-        let rate;
-        if rx_rate > tx_rate {
-            range = NET_RPLUS * NET_FPLUS;
-            rate = rx_rate;
+        let range = if rate >= 0 {
+            NET_RPLUS * NET_FPLUS
         } else {
-            range = NET_RMINUS * NET_FMINUS;
-            rate = tx_rate;
-        }
-        let net_gauge = NET_ZERO + range * (((rate as f64) / 1_000_000.0) / (opts.max_mbps as f64));
+            NET_RMINUS * NET_FMINUS
+        };
 
+        let net_gauge = NET_ZERO + range * (((rate as f64) / 1_000_000.0) / (opts.max_mbps as f64));
         debug!(
-            "NET gauge: {net_gauge:.1} rx: {rx} kbps, tx: {tx} kbps",
+            "NET gauge: {net_gauge:.1} rx: {rx} kbps, tx: {tx} kbps, rate: {rate} kbps",
             rx = rx_rate / 1000,
-            tx = tx_rate / 1000
+            tx = tx_rate / 1000,
+            rate = rate / 1000,
         );
         set_vu(&mut ser, 3, net_gauge as i16)?;
 
