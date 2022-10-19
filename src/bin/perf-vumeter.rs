@@ -12,7 +12,7 @@ use perf_vumeter::*;
 const MAX_DELTA: i16 = 96;
 const NET_ZERO: f64 = 108.0;
 
-const NET_RMINUS: f64 = -NET_ZERO + 28.0;
+const NET_RMINUS: f64 = NET_ZERO - 28.0;
 const NET_FMINUS: f64 = 0.83;
 
 const NET_RPLUS: f64 = 255.0 - NET_ZERO;
@@ -119,8 +119,8 @@ fn set_vu(ser: &mut File, channel: u8, mut gauge: i16) -> anyhow::Result<()> {
     // limit to gauge values between 0..255
     if gauge > 255 {
         gauge = 255;
-    } else if gauge < 0 {
-        gauge = 0;
+    } else if gauge < 28 {
+        gauge = 28;
     }
 
     // do some smoothing -- only move the gauge MAX_DELTA at once
