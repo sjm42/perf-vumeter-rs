@@ -100,12 +100,7 @@ fn set_vu(ser: &mut File, channel: u8, mut gauge: i16) -> anyhow::Result<()> {
         );
     }
 
-    // limit to gauge values between 0..255
-    if gauge > 255 {
-        gauge = 255;
-    } else if gauge < 0 {
-        gauge = 0;
-    }
+    gauge = gauge.clamp(0, 255);
 
     // do some smoothing -- only move the gauge MAX_DELTA at once
     let delta = unsafe { gauge - LAST_VAL[ch_i] };
