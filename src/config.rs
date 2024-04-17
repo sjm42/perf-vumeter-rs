@@ -1,45 +1,45 @@
 // startup.rs
 
-use log::*;
-use structopt::StructOpt;
+use crate::*;
 
-#[derive(Debug, Default, StructOpt)]
+#[derive(Debug, Default, Parser)]
 pub struct OptsCommon {
-    #[structopt(short, long)]
+    #[arg(short, long)]
     pub verbose: bool,
-    #[structopt(short, long)]
+    #[arg(short, long)]
     pub debug: bool,
-    #[structopt(short, long)]
+    #[arg(short, long)]
     pub trace: bool,
 
-    #[structopt(short, long, default_value = "/dev/VUmeter")]
+    #[arg(short, long, default_value = "/dev/VUmeter")]
     pub port: String,
-    #[structopt(short, long, default_value = "br0")]
+    #[arg(short, long, default_value = "br0")]
     pub interface: String,
-    #[structopt(short, long, default_value = "5")]
+    #[arg(short, long, default_value_t = 5)]
     pub samplerate: u16,
-    #[structopt(short, long, default_value = "100")]
+    #[arg(short, long, default_value_t = 100)]
     pub max_mbps: u16,
 }
+
 impl OptsCommon {
-    pub fn get_loglevel(&self) -> LevelFilter {
+    pub fn get_loglevel(&self) -> Level {
         if self.trace {
-            LevelFilter::Trace
+            Level::TRACE
         } else if self.debug {
-            LevelFilter::Debug
+            Level::DEBUG
         } else if self.verbose {
-            LevelFilter::Info
+            Level::INFO
         } else {
-            LevelFilter::Error
+            Level::ERROR
         }
     }
 
     pub fn start_pgm(&self, name: &str) {
-        env_logger::Builder::new()
-            .filter_module(env!("CARGO_PKG_NAME"), self.get_loglevel())
-            .filter_module(name, self.get_loglevel())
-            .format_timestamp_secs()
+        tracing_subscriber::fmt()
+            .with_max_level(self.get_loglevel())
+            .with_target(false)
             .init();
+
         info!("Starting up {name} v{}...", env!("CARGO_PKG_VERSION"));
         debug!("Git branch: {}", env!("GIT_BRANCH"));
         debug!("Git commit: {}", env!("GIT_COMMIT"));

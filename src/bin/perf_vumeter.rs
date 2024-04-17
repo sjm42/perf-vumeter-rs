@@ -1,18 +1,17 @@
 // bin/perf-vumeter.rs
 
-use anyhow::bail;
-use log::*;
+use std::{cmp, thread, time};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::{cmp, thread, time};
-use structopt::StructOpt;
+
+use anyhow::bail;
 
 use perf_vumeter::*;
 
 const MAX_DELTA: i16 = 96;
 
 fn main() -> anyhow::Result<()> {
-    let opts = OptsCommon::from_args();
+    let opts = OptsCommon::parse();
     opts.start_pgm(env!("CARGO_BIN_NAME"));
 
     info!("Opening serial port {}", &opts.port);

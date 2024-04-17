@@ -1,9 +1,9 @@
 // stats.rs
 
-use anyhow::anyhow;
-use std::io::{self, BufRead};
-use std::{cmp::Ordering, fmt, time};
+use std::{cmp::Ordering, fmt, io::{self, BufRead}, time};
 use std::{collections::HashMap, fs::File, path::Path};
+
+use anyhow::anyhow;
 
 const CPU_JIFF: f64 = 100.0;
 
@@ -12,6 +12,7 @@ pub enum IfCounter {
     Rx,
     Tx,
 }
+
 impl fmt::Display for IfCounter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -33,9 +34,10 @@ pub struct IfStats {
     prev_ts: time::Instant,
     prev_cnt: i64,
 }
+
 impl IfStats {
     pub fn new<S: AsRef<str>>(iface: S, dir: IfCounter) -> anyhow::Result<Self> {
-        let fn_stats = format!("/sys/class/net/{if}/statistics/{dir}", if=iface.as_ref());
+        let fn_stats = format!("/sys/class/net/{if}/statistics/{dir}", if = iface.as_ref());
         let prev_cnt = Self::read_number(&fn_stats)?;
         Ok(Self {
             iface: iface.as_ref().to_string(),
@@ -54,8 +56,8 @@ impl IfStats {
         Ok(rate)
     }
     fn read_number<P>(filename: P) -> anyhow::Result<i64>
-    where
-        P: AsRef<Path>,
+        where
+            P: AsRef<Path>,
     {
         let mut lines = io::BufReader::new(File::open(filename)?).lines();
         if let Some(line) = lines.next() {
@@ -70,6 +72,7 @@ pub struct CpuStats {
     prev_ts: time::Instant,
     prev_idle: Vec<i64>,
 }
+
 impl CpuStats {
     pub fn new() -> anyhow::Result<Self> {
         Ok(Self {
@@ -128,6 +131,7 @@ pub struct DiskStats {
     prev_ts: time::Instant,
     prev_stats: HashMap<String, (i64, i64)>,
 }
+
 impl DiskStats {
     pub fn new() -> anyhow::Result<Self> {
         Ok(Self {
